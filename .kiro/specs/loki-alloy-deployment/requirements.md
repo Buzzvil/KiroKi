@@ -64,13 +64,13 @@
 
 ### Requirement 5
 
-**User Story:** 플랫폼 엔지니어로서, buzz-k8s-resources 리포지토리에 Alloy 헬름 차트를 설정하고 싶습니다. Alloy가 각 클러스터에서 로그를 수집하여 Loki로 전송할 수 있습니다.
+**User Story:** 플랫폼 엔지니어로서, buzz-k8s-resources 리포지토리에 Alloy 헬름 차트를 설정하고 싶습니다. Alloy가 각 클러스터에서 모든 로그를 수집하여 Loki로 전송할 수 있습니다.
 
 #### Acceptance Criteria
 
 1. WHEN 헬름 차트가 생성되면 THE buzz-k8s-resources 리포지토리 SHALL Alloy 헬름 차트 설정 파일을 포함한다
 2. WHEN Alloy가 구성되면 THE buzz-k8s-resources 리포지토리 SHALL Loki 엔드포인트를 대상으로 설정한다
-3. WHEN 로그 수집 규칙이 정의되면 THE buzz-k8s-resources 리포지토리 SHALL 수집할 로그 소스와 필터링 규칙을 명시한다
+3. WHEN 로그 수집 규칙이 정의되면 THE buzz-k8s-resources 리포지토리 SHALL 모든 로그 소스를 필터링 없이 수집하도록 명시한다
 4. WHEN 클러스터별 설정이 필요하면 THE buzz-k8s-resources 리포지토리 SHALL ops, dev, prod 환경별 values 파일을 제공한다
 
 ### Requirement 6
