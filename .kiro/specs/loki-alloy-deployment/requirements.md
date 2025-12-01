@@ -6,8 +6,8 @@
 
 ## Glossary
 
-- **Loki**: Grafana Labs에서 개발한 로그 수집 및 쿼리 시스템
-- **Alloy**: 로그 수집 에이전트 (Grafana Agent의 후속 버전)
+- **Loki**: Grafana Labs에서 개발한 로그 수집 및 쿼리 시스템 (버전 3.2.x 사용)
+- **Alloy**: 로그 수집 에이전트 (Grafana Agent의 후속 버전, 버전 1.4.x 사용)
 - **terraform-resources**: Terraform 코드를 관리하는 리포지토리
 - **buzz-k8s-resources**: Kubernetes 헬름 차트를 관리하는 리포지토리
 - **eks-ops**: EKS 클러스터 운영 리포지토리
