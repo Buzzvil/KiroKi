@@ -1,12 +1,12 @@
 # Implementation Plan
 
-- [ ] 1. Terraform으로 S3 버킷 및 IAM Role 프로비저닝
+- [x] 1. Terraform으로 S3 버킷 및 IAM Role 프로비저닝
   - terraform-resources 리포지토리에 Loki용 S3 버킷 리소스 정의
   - IAM Role 및 정책 생성 (S3 읽기/쓰기 권한)
   - Output으로 버킷 이름과 Role ARN 출력
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-- [ ] 1.1 Terraform 설정 검증 테스트 작성
+- [x] 1.1 Terraform 설정 검증 테스트 작성
   - S3 버킷 생성 확인
   - IAM Role 및 정책 생성 확인
   - Output 값 검증
