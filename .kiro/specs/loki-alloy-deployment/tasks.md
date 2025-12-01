@@ -14,14 +14,14 @@
   - **Validates: Requirements 1.3**
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-- [ ] 2. buzz-k8s-resources에 Loki Helm 차트 설정
+- [x] 2. buzz-k8s-resources에 Loki Helm 차트 설정
   - Loki Helm 차트 디렉토리 구조 생성
   - values.yaml 작성 (멀티테넌시 활성화, S3 백엔드 설정)
   - 테넌트별 로그 격리 정책 정의 (ops, dev, prod)
   - ServiceAccount에 IAM Role ARN 어노테이션 추가
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-- [ ] 2.1 Helm 차트 설정 검증 테스트 작성
+- [x] 2.1 Helm 차트 설정 검증 테스트 작성
   - Chart.yaml 및 values.yaml 파일 존재 확인
   - 멀티테넌시 설정 (auth_enabled: true) 확인
   - S3 백엔드 설정 검증
