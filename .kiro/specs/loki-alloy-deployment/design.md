@@ -8,15 +8,21 @@
 - **Loki 3.2.x**: 로그 수집 및 쿼리 엔진 (S3 백엔드, 분산 모드)
 - **Alloy 1.4.x**: 각 클러스터의 로그 수집 에이전트 (DaemonSet)
 - **S3**: 로그 장기 저장소
-- **Terraform**: 인프라 프로비저닝
 - **Helm**: Kubernetes 애플리케이션 패키징 (Loki Chart v6.x, Alloy Chart v0.9.x)
 - **Gitploy**: GitOps 기반 배포 자동화
+- **IRSA**: IAM Roles for Service Accounts를 통한 S3 접근 권한 관리
 
 **대규모 환경 최적화:**
 - Loki 분산 모드 (Microservices): Ingester, Querier, Distributor 분리
 - TSDB 인덱스 + Bloom Filters: 쿼리 성능 최대 10배 향상
 - Alloy 배치 최적화: 초당 수십만 라인 처리 가능
 - 멀티 버킷 전략: chunks, ruler, admin 버킷 분리
+
+**가용영역 (AZ) 최적화:**
+- AZ-A, AZ-C 두 개의 가용영역 사용
+- Pod Topology Spread Constraints로 AZ별 균등 분산
+- Service Topology로 동일 AZ 내 트래픽 라우팅
+- Cross-Zone 트래픽 최소화로 네트워크 비용 절감
 
 ## Architecture
 
@@ -26,13 +32,21 @@
 graph TB
     subgraph "AWS"
         S3[S3 Bucket]
-        IAM[IAM Roles]
+        IAM[IAM Role - IRSA]
     end
     
-    subgraph "ops Cluster"
-        Loki[Loki Server]
-        AlloyOps[Alloy Agent]
-        PodsOps[Application Pods]
+    subgraph "ops Cluster - AZ-A"
+        LokiDistA[Loki Distributor]
+        LokiIngA[Loki Ingester]
+        AlloyOpsA[Alloy DaemonSet]
+        PodsOpsA[Application Pods]
+    end
+    
+    subgraph "ops Cluster - AZ-C"
+        LokiDistC[Loki Distributor]
+        LokiIngC[Loki Ingester]
+        AlloyOpsC[Alloy DaemonSet]
+        PodsOpsC[Application Pods]
     end
     
     subgraph "dev Cluster"
@@ -46,32 +60,39 @@ graph TB
     end
     
     subgraph "Infrastructure"
-        Terraform[terraform-resources]
         Helm[buzz-k8s-resources]
-        GitOps[eks-ops + Gitploy]
+        GitOps[Gitploy]
     end
     
-    Terraform -->|Provision| S3
-    Terraform -->|Create| IAM
-    Helm -->|Define Charts| Loki
-    Helm -->|Define Charts| AlloyOps
-    Helm -->|Define Charts| AlloyDev
-    Helm -->|Define Charts| AlloyProd
-    GitOps -->|Deploy| Loki
-    GitOps -->|Deploy| AlloyOps
-    GitOps -->|Deploy| AlloyDev
-    GitOps -->|Deploy| AlloyProd
+    Helm -->|Define Charts| LokiDistA
+    Helm -->|Define Charts| AlloyOpsA
+    GitOps -->|Deploy| LokiDistA
+    GitOps -->|Deploy| AlloyOpsA
     
-    PodsOps -->|Logs| AlloyOps
+    PodsOpsA -->|Logs| AlloyOpsA
+    PodsOpsC -->|Logs| AlloyOpsC
     PodsDev -->|Logs| AlloyDev
     PodsProd -->|Logs| AlloyProd
     
-    AlloyOps -->|Push Logs| Loki
-    AlloyDev -->|Push Logs| Loki
-    AlloyProd -->|Push Logs| Loki
+    AlloyOpsA -->|Same AZ| LokiDistA
+    AlloyOpsC -->|Same AZ| LokiDistC
+    AlloyDev -->|Push Logs| LokiDistA
+    AlloyProd -->|Push Logs| LokiDistA
     
-    Loki -->|Store| S3
-    IAM -->|Authorize| Loki
+    LokiDistA -->|Same AZ| LokiIngA
+    LokiDistC -->|Same AZ| LokiIngC
+    
+    LokiIngA -->|Store| S3
+    LokiIngC -->|Store| S3
+    IAM -->|IRSA| LokiIngA
+    IAM -->|IRSA| LokiIngC
+    
+    style AlloyOpsA fill:#e1f5ff
+    style LokiDistA fill:#e1f5ff
+    style LokiIngA fill:#e1f5ff
+    style AlloyOpsC fill:#fff4e1
+    style LokiDistC fill:#fff4e1
+    style LokiIngC fill:#fff4e1
 ```
 
 ### Deployment Flow
@@ -106,30 +127,7 @@ sequenceDiagram
 
 ## Components and Interfaces
 
-### 1. Terraform Infrastructure Module
-
-**Purpose**: S3 버킷과 IAM 역할을 프로비저닝
-
-**Key Resources**:
-- `aws_s3_bucket`: Loki 로그 저장용 버킷
-- `aws_s3_bucket_versioning`: 버전 관리 활성화
-- `aws_s3_bucket_lifecycle_configuration`: 로그 보관 정책
-- `aws_iam_role`: Loki가 사용할 서비스 역할
-- `aws_iam_policy`: S3 읽기/쓰기 권한 정책
-- `aws_iam_role_policy_attachment`: 역할에 정책 연결
-
-**Outputs**:
-```hcl
-output "loki_s3_bucket_name" {
-  value = aws_s3_bucket.loki_logs.id
-}
-
-output "loki_iam_role_arn" {
-  value = aws_iam_role.loki.arn
-}
-```
-
-### 2. Loki Helm Chart Configuration
+### 1. Loki Helm Chart Configuration
 
 **Purpose**: Loki 서버를 Kubernetes에 배포
 
@@ -190,7 +188,7 @@ loki:
       
   # 분산 모드 컴포넌트 설정
   ingester:
-    replicas: 3
+    replicas: 4                          # AZ-A: 2, AZ-C: 2
     resources:
       requests:
         cpu: 2
@@ -200,11 +198,20 @@ loki:
         memory: 8Gi
     autoscaling:
       enabled: true
-      minReplicas: 3
+      minReplicas: 4
       maxReplicas: 10
+    
+    # AZ별 균등 분산
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: ingester
   
   querier:
-    replicas: 3
+    replicas: 4                          # AZ-A: 2, AZ-C: 2
     resources:
       requests:
         cpu: 1
@@ -214,30 +221,62 @@ loki:
         memory: 4Gi
     autoscaling:
       enabled: true
-      minReplicas: 3
+      minReplicas: 4
       maxReplicas: 10
+    
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: querier
   
   queryFrontend:
-    replicas: 2
+    replicas: 2                          # AZ-A: 1, AZ-C: 1
     resources:
       requests:
         cpu: 500m
         memory: 1Gi
+    
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: query-frontend
   
   distributor:
-    replicas: 3
+    replicas: 4                          # AZ-A: 2, AZ-C: 2
     resources:
       requests:
         cpu: 1
         memory: 1Gi
     autoscaling:
       enabled: true
-      minReplicas: 3
+      minReplicas: 4
       maxReplicas: 10
+    
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: distributor
+    
+    # Service Topology 설정 (동일 AZ 우선)
+    service:
+      annotations:
+        service.kubernetes.io/topology-mode: "Auto"
+      topologyKeys:
+        - "topology.kubernetes.io/zone"
+        - "*"
     
 serviceAccount:
   annotations:
-    eks.amazonaws.com/role-arn: <from-terraform-output>
+    eks.amazonaws.com/role-arn: <iam-role-arn>  # IRSA 설정
 ```
 
 **Multitenancy Configuration**:
@@ -245,7 +284,7 @@ serviceAccount:
 - 테넌트별 격리: ops, dev, prod
 - 테넌트별 리소스 제한: ingestion_rate_mb, max_streams_per_user
 
-### 3. Alloy Helm Chart Configuration
+### 2. Alloy Helm Chart Configuration
 
 **Purpose**: 각 클러스터에서 로그 수집
 
@@ -268,10 +307,11 @@ alloy:
   
   configMap:
     content: |
-      // Loki 엔드포인트 설정
+      // Loki 엔드포인트 설정 (동일 AZ 우선 라우팅)
       loki.write "default" {
         endpoint {
-          url = "http://loki-gateway.loki.svc.cluster.local/loki/api/v1/push"
+          // Service Topology를 통해 동일 AZ의 Distributor로 라우팅
+          url = "http://loki-distributor.loki.svc.cluster.local/loki/api/v1/push"
           tenant_id = "<cluster-name>"  # ops, dev, or prod
           
           // 대규모 환경 최적화
@@ -284,9 +324,10 @@ alloy:
           min_backoff = "100ms"
         }
         
-        // 외부 레이블 (카디널리티 관리)
+        // 외부 레이블 (카디널리티 관리 + AZ 정보)
         external_labels = {
           cluster = "<cluster-name>",
+          availability_zone = env("NODE_AZ"),  # Node의 AZ 정보
         }
       }
       
@@ -344,6 +385,13 @@ alloy:
     runAsUser: 0
     runAsGroup: 0
   
+  # 환경 변수 (Node AZ 정보 주입)
+  env:
+    - name: NODE_AZ
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.labels['topology.kubernetes.io/zone']
+  
   # 볼륨 마운트 (호스트 로그 접근)
   extraVolumes:
     - name: varlog
@@ -362,7 +410,7 @@ alloy:
       readOnly: true
 ```
 
-### 4. Gitploy Deployment Trigger
+### 3. Gitploy Deployment Trigger
 
 **Purpose**: 각 클러스터로의 배포 트리거
 
@@ -373,7 +421,7 @@ alloy:
 4. Helm 차트가 선택된 클러스터에 배포됨
 5. kubectl로 배포 상태 확인
 
-### 5. Monitoring and Validation Tools
+### 4. Monitoring and Validation Tools
 
 **kubectl Commands**:
 ```bash
@@ -402,6 +450,105 @@ aws s3 ls s3://<bucket-name>/loki/
 # 객체 다운로드
 aws s3 cp s3://<bucket-name>/loki/<object-key> -
 ```
+
+## Availability Zone (AZ) Architecture
+
+### AZ 분산 전략
+
+**목표**: Cross-zone 트래픽 비용 최소화
+
+**사용 가용영역**:
+- **AZ-A** (ap-northeast-2a)
+- **AZ-C** (ap-northeast-2c)
+
+### Pod 배치 전략
+
+**Loki 컴포넌트 배치**:
+```yaml
+# Distributor: 4 replicas (AZ-A: 2, AZ-C: 2)
+# Ingester: 4 replicas (AZ-A: 2, AZ-C: 2)
+# Querier: 4 replicas (AZ-A: 2, AZ-C: 2)
+# Query Frontend: 2 replicas (AZ-A: 1, AZ-C: 1)
+
+topologySpreadConstraints:
+  - maxSkew: 1                                    # 최대 1개 차이
+    topologyKey: topology.kubernetes.io/zone      # AZ 기준
+    whenUnsatisfiable: DoNotSchedule              # 조건 불만족 시 스케줄 안함
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/component: distributor
+```
+
+**Alloy 배치**:
+- DaemonSet으로 모든 노드에 배포
+- 각 Alloy Pod는 자신이 실행 중인 노드의 AZ 정보를 환경 변수로 받음
+- 동일 AZ의 Loki Distributor로 로그 전송
+
+### Service Topology 설정
+
+**Loki Distributor Service**:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-distributor
+  annotations:
+    service.kubernetes.io/topology-mode: "Auto"
+spec:
+  topologyKeys:
+    - "topology.kubernetes.io/zone"    # 동일 AZ 우선
+    - "*"                               # 동일 AZ 없으면 다른 AZ
+```
+
+**트래픽 흐름**:
+1. AZ-A의 Alloy → AZ-A의 Distributor (Same-Zone, 비용 없음)
+2. AZ-C의 Alloy → AZ-C의 Distributor (Same-Zone, 비용 없음)
+3. Fallback: AZ-A의 Alloy → AZ-C의 Distributor (Cross-Zone, 비용 발생)
+
+### Cross-Zone 트래픽 모니터링
+
+**메트릭 수집**:
+```promql
+# AZ별 트래픽 양
+sum by (source_zone, destination_zone) (
+  rate(loki_distributor_bytes_received_total[5m])
+)
+
+# Cross-zone 트래픽 비율
+sum(rate(loki_distributor_bytes_received_total{source_zone!=destination_zone}[5m]))
+/
+sum(rate(loki_distributor_bytes_received_total[5m]))
+```
+
+**알림 규칙**:
+```yaml
+- alert: HighCrossZoneTraffic
+  expr: |
+    sum(rate(loki_distributor_bytes_received_total{source_zone!=destination_zone}[5m]))
+    /
+    sum(rate(loki_distributor_bytes_received_total[5m]))
+    > 0.1
+  for: 10m
+  annotations:
+    summary: "Cross-zone traffic exceeds 10%"
+    description: "{{ $value | humanizePercentage }} of traffic is cross-zone"
+```
+
+### 장애 시나리오
+
+**AZ-A 장애 시**:
+- AZ-A의 Loki 컴포넌트 다운
+- AZ-A의 Alloy → AZ-C의 Distributor로 자동 페일오버
+- Cross-zone 트래픽 증가하지만 서비스 지속
+
+**AZ-C 장애 시**:
+- AZ-C의 Loki 컴포넌트 다운
+- AZ-C의 Alloy → AZ-A의 Distributor로 자동 페일오버
+- Cross-zone 트래픽 증가하지만 서비스 지속
+
+**복구 후**:
+- Service Topology가 자동으로 동일 AZ 라우팅 재개
+- Cross-zone 트래픽 정상화
 
 ## Data Models
 
@@ -738,11 +885,9 @@ def test_loki_cost_threshold_alert(cost, threshold):
 ### Prerequisites
 
 **Required Tools**:
-- Terraform >= 1.5.0
 - Helm >= 3.12.0
 - kubectl >= 1.27.0
-- AWS CLI >= 2.13.0
-- Python >= 3.10 (for testing)
+- AWS CLI >= 2.13.0 (S3 검증용)
 
 **Required Versions**:
 - Loki: 3.2.x (Helm Chart: grafana/loki v6.x)
@@ -757,9 +902,9 @@ def test_loki_cost_threshold_alert(cost, threshold):
 | Kubernetes | 1.27+ | - | 필수 |
 
 **Required Access**:
-- AWS 계정 (S3, IAM 권한)
 - Kubernetes 클러스터 접근 (ops, dev, prod)
-- GitHub 리포지토리 접근 (terraform-resources, buzz-k8s-resources, eks-ops)
+- GitHub 리포지토리 접근 (buzz-k8s-resources)
+- S3 버킷 및 IAM Role ARN (사전 프로비저닝 필요)
 
 ### Configuration Management
 
@@ -786,31 +931,30 @@ export LOKI_ENDPOINT=http://loki-gateway.loki.svc.cluster.local
 
 ### Deployment Order
 
-1. **Phase 1: Infrastructure** (ops cluster)
-   - Terraform: S3 + IAM
-   - Helm: Loki chart
-   - Gitploy: Deploy Loki
-   - Verify: Loki health check
+1. **Phase 1: Loki 배포** (ops cluster)
+   - Helm Chart 준비: Loki values.yaml 작성
+   - Gitploy: Loki 배포 (AZ-A, AZ-C 분산)
+   - Verify: Loki health check, AZ 분산 확인
 
-2. **Phase 2: Log Collection** (ops cluster)
-   - Helm: Alloy chart
-   - Gitploy: Deploy Alloy
-   - Verify: Logs in Loki
+2. **Phase 2: Alloy 배포** (ops cluster)
+   - Helm Chart 준비: Alloy values-ops.yaml 작성
+   - Gitploy: Alloy DaemonSet 배포
+   - Verify: 로그 수집 확인, 동일 AZ 라우팅 확인
 
-3. **Phase 3: Expansion** (dev cluster)
-   - Helm: Alloy chart (dev values)
-   - Gitploy: Deploy Alloy
-   - Verify: Dev logs in Loki
+3. **Phase 3: dev 클러스터 확장**
+   - Helm Chart 준비: Alloy values-dev.yaml 작성
+   - Gitploy: Alloy 배포
+   - Verify: dev 테넌트 로그 확인
 
-4. **Phase 4: Production** (prod cluster)
-   - Helm: Alloy chart (prod values)
-   - Gitploy: Deploy Alloy
-   - Verify: Prod logs in Loki
+4. **Phase 4: prod 클러스터 확장**
+   - Helm Chart 준비: Alloy values-prod.yaml 작성
+   - Gitploy: Alloy 배포
+   - Verify: prod 테넌트 로그 확인
 
-5. **Phase 5: Monitoring**
-   - Implement cost tracking
-   - Set up alerting
-   - Verify log collection completeness
+5. **Phase 5: 모니터링 및 최적화**
+   - Cross-zone 트래픽 모니터링
+   - 비용 추적 설정
+   - 로그 수집 완전성 검증
 
 ### Rollback Strategy
 
@@ -874,6 +1018,21 @@ terraform apply -state=previous.tfstate
 
 ### Cost Optimization (대규모 환경)
 
+**Cross-Zone 트래픽 비용 최소화**:
+- **Pod Topology Spread**: AZ별 균등 분산 (AZ-A: 50%, AZ-C: 50%)
+- **Service Topology**: 동일 AZ 내 트래픽 우선 라우팅
+- **예상 절감**: Cross-zone 트래픽 90% 이상 감소
+- **비용 영향**: GB당 $0.01 절감 (월 수백 GB 전송 시 수십 달러 절감)
+
+**네트워크 트래픽 패턴**:
+```
+AZ-A Node → AZ-A Alloy → AZ-A Distributor → AZ-A Ingester → S3
+AZ-C Node → AZ-C Alloy → AZ-C Distributor → AZ-C Ingester → S3
+
+❌ 피해야 할 패턴:
+AZ-A Node → AZ-C Distributor (Cross-Zone 비용 발생)
+```
+
 **S3 비용 최적화**:
 ```yaml
 # S3 Lifecycle 정책
@@ -897,3 +1056,8 @@ lifecycle_rules:
 - debug 레벨 로그 제거 (프로덕션)
 - 중복 로그 제거
 - 예상 비용 절감: 30-40%
+
+**총 비용 절감 예상**:
+- Cross-zone 트래픽: 월 $50-100 절감
+- 로그 필터링: 월 $200-300 절감 (스토리지 + 전송)
+- 총 절감: 월 $250-400
