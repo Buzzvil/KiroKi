@@ -190,3 +190,22 @@ index d858f133..2efba109 100644
 - 결과: ✅ 성공 - 12개 Service에 topology-mode: Auto 적용
 - 효과: Cross-zone 트래픽 감소, 네트워크 레이턴시 개선
 - Gitploy URL: https://gitploy.buzzvil.dev/repos/Buzzvil/buzz-k8s-resources/deployments/4338
+
+### Deployment #4339 (성공) - Zone-Aware Pod Distribution
+- Commit: dd974bd9
+- 변경: topologySpreadConstraints 추가 및 replicas 증가
+- 추가:
+  - 모든 multi-replica 컴포넌트에 topologySpreadConstraints 설정
+  - maxSkew: 1, whenUnsatisfiable: DoNotSchedule
+  - topologyKey: topology.kubernetes.io/zone
+- Replicas 변경:
+  - gateway: 2 → 6
+  - distributor: 3 → 6 (minReplicas: 3 → 6)
+  - ingester: 3 → 6 (minReplicas: 3 → 6)
+  - querier: 3 → 6 (minReplicas: 3 → 6)
+  - queryFrontend: 2 → 6 (minReplicas: 2 → 6)
+  - queryScheduler: 2 → 6
+  - indexGateway: 2 → 6
+- 결과: ✅ 성공 - 모든 컴포넌트가 A존/C존에 3개씩 균등 분산
+- 효과: Zone-aware routing 활성화, 고가용성 향상
+- Gitploy URL: https://gitploy.buzzvil.dev/repos/Buzzvil/buzz-k8s-resources/deployments/4339
