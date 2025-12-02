@@ -179,3 +179,14 @@ index d858f133..2efba109 100644
   - lokiCanary 모니터링
 - 수정: YAML 들여쓰기 오류 수정 (resources, service 섹션)
 - 검증: helm template 렌더링 성공 확인
+
+### Deployment #4338 (성공) - Topology Annotations
+- Commit: 545d7dbc
+- 변경: 모든 Loki Service에 토폴로지 어노테이션 추가
+- 수정:
+  - service.annotations → serviceAnnotations (대부분 컴포넌트)
+  - gateway는 gateway.service.annotations 유지
+  - queryFrontend, queryScheduler에 serviceAnnotations 추가
+- 결과: ✅ 성공 - 12개 Service에 topology-mode: Auto 적용
+- 효과: Cross-zone 트래픽 감소, 네트워크 레이턴시 개선
+- Gitploy URL: https://gitploy.buzzvil.dev/repos/Buzzvil/buzz-k8s-resources/deployments/4338
