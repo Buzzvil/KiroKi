@@ -9,15 +9,17 @@ ArgoCD CLI는 ArgoCD 애플리케이션을 명령줄에서 관리하는 도구
 
 ### 로그인
 ```bash
+# SSO 로그인 (권장)
+argocd login <ARGOCD_SERVER> --sso --grpc-web --sso-launch-browser=false
+
 # 패스워드 로그인
 argocd login <ARGOCD_SERVER>
 
 # 토큰 로그인
 argocd login <ARGOCD_SERVER> --auth-token <TOKEN>
-
-# SSO 로그인
-argocd login <ARGOCD_SERVER> --sso
 ```
+
+**참고**: SSO 로그인 시 브라우저에서 URL을 열어 인증 완료 필요
 
 ### 컨텍스트 확인
 ```bash
@@ -130,7 +132,7 @@ argocd cluster list
 ### 일반적인 워크플로우
 ```bash
 # 1. 로그인
-argocd login argo-cd.buzzvil.dev --sso
+argocd login argo-cd.buzzvil.dev --sso --grpc-web --sso-launch-browser=false
 
 # 2. 애플리케이션 상태 확인
 argocd app get loki-v3 --refresh
