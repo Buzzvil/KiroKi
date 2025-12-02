@@ -29,6 +29,17 @@
 
 - [~] 3. Gitploy로 Loki를 ops 클러스터에 배포 (Partial)
   - [x] Gitploy를 통해 ops 클러스터로 배포 트리거 (Deployment #4325 성공)
+  - [ ] 배포 상태 확인
+    - [ ] Gitploy 배포 상태 조회 (waiting/queued/in_progress/success/failure)
+    - [ ] GitHub Actions 워크플로우 실행 확인
+    - [ ] ArgoCD 동기화 상태 확인 (Synced/OutOfSync/Unknown)
+    - [ ] Kubernetes 리소스 상태 확인
+      - [ ] loki-v3 namespace 존재 확인
+      - [ ] Pod 상태 확인 (Running/Pending/Error)
+      - [ ] 각 컴포넌트별 replica 수 확인
+    - [ ] 서비스 헬스 체크
+      - [ ] Gateway 서비스 접근 가능 여부
+      - [ ] Loki API 응답 확인 (/ready, /metrics)
   - [ ] kubectl로 Loki Pod 상태 확인 (클러스터 접근 필요)
   - [ ] Loki 서비스 엔드포인트 접근성 확인 (클러스터 접근 필요)
   - [ ] Health check 엔드포인트 검증 (클러스터 접근 필요)
