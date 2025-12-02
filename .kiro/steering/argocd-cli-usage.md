@@ -3,17 +3,6 @@
 ## 개요
 ArgoCD CLI는 ArgoCD 애플리케이션을 명령줄에서 관리하는 도구
 
-## 설치
-```bash
-# Linux
-curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
-rm argocd-linux-amd64
-
-# macOS
-brew install argocd
-```
-
 ## 인증
 
 ### 로그인
@@ -58,35 +47,6 @@ argocd app get <APP_NAME> -o json
 argocd app get <APP_NAME>
 ```
 
-### 애플리케이션 동기화
-```bash
-# 수동 동기화
-argocd app sync <APP_NAME>
-
-# 특정 리소스만 동기화
-argocd app sync <APP_NAME> --resource <RESOURCE>
-
-# Prune 옵션 (삭제된 리소스 제거)
-argocd app sync <APP_NAME> --prune
-```
-
-### 애플리케이션 생성
-```bash
-argocd app create <APP_NAME> \
-  --repo <REPO_URL> \
-  --path <PATH> \
-  --dest-server https://kubernetes.default.svc \
-  --dest-namespace <NAMESPACE>
-```
-
-### 애플리케이션 삭제
-```bash
-argocd app delete <APP_NAME>
-
-# 리소스도 함께 삭제
-argocd app delete <APP_NAME> --cascade
-```
-
 ## 리소스 관리
 
 ### 리소스 목록 조회
@@ -104,16 +64,11 @@ argocd app manifests <APP_NAME>
 argocd app diff <APP_NAME>
 ```
 
-## 히스토리 및 롤백
+## 히스토리 조회
 
 ### 배포 히스토리 조회
 ```bash
 argocd app history <APP_NAME>
-```
-
-### 롤백
-```bash
-argocd app rollback <APP_NAME> <REVISION>
 ```
 
 ## 로그 조회
@@ -148,11 +103,6 @@ argocd proj get <PROJECT_NAME>
 argocd cluster list
 ```
 
-### 클러스터 추가
-```bash
-argocd cluster add <CONTEXT_NAME>
-```
-
 ## 유용한 옵션
 
 ### 출력 형식
@@ -182,10 +132,7 @@ argocd login argocd-ops.buzzvil.dev --sso
 # 2. 애플리케이션 상태 확인
 argocd app get loki-v3 --refresh
 
-# 3. 동기화 (필요시)
-argocd app sync loki-v3
-
-# 4. 로그 확인
+# 3. 로그 확인
 argocd app logs loki-v3 --follow
 ```
 
