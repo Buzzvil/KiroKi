@@ -6,7 +6,8 @@
 - Created: 2025-12-02
 - Updated: 2025-12-02
 - Status: open
-- Deployed: Deployment #4332 (success)
+- Deployed: Deployment #4333 (success)
+- Latest Commit: 6d28d441 (Helm chart 6.30.0 + validated values)
 
 ## 변경 목적
 1. Loki v3.2.2와 호환되지 않는 설정 필드로 인해 모든 Loki 컴포넌트가 CrashLoopBackOff 상태로 실패하는 문제 해결
@@ -166,3 +167,15 @@ index d858f133..2efba109 100644
 - 이유: HPA가 zone별 StatefulSet을 지원하지 않음
 - 결과: ✅ 성공 - 단일 StatefulSet 생성, HPA 정상 작동
 - Gitploy URL: https://gitploy.buzzvil.dev/repos/Buzzvil/buzz-k8s-resources/deployments/4333
+
+### Commit 6d28d441 (Helm 검증 완료)
+- 변경: Helm chart 6.16.0 → 6.30.0 + 검증된 values 적용
+- 추가:
+  - loki.storage 섹션 (bucketNames 명시)
+  - querier, query_scheduler, frontend, distributor 설정
+  - compactor retention 상세 설정
+  - bloom_build/bloom_gateway 비활성화
+  - chunksCache, resultsCache 설정
+  - lokiCanary 모니터링
+- 수정: YAML 들여쓰기 오류 수정 (resources, service 섹션)
+- 검증: helm template 렌더링 성공 확인
