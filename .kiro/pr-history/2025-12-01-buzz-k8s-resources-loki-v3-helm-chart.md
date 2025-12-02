@@ -3,7 +3,18 @@
 - Repository: Buzzvil/buzz-k8s-resources
 - PR URL: https://github.com/Buzzvil/buzz-k8s-resources/pull/1447
 - Created: 2025-12-01
+- Updated: 2025-12-02
 - Status: open
+
+## Review 수정사항 (2025-12-02)
+1. project: data-platform → devops
+2. registry: docker.io → ECR pull-through cache (591756927972.dkr.ecr.ap-northeast-1.amazonaws.com/docker.io)
+3. syncPolicy.syncOptions: CreateNamespace=true 추가
+4. Loki 이미지 태그: 3.2.0 → 3.2.2 (최신 패치)
+5. max_query_length: 721h → 168h (retention 기간과 일치)
+6. max_query_lookback: 720h → 168h (retention 기간과 일치)
+7. serviceMonitor 위치: 최상위 → monitoring.serviceMonitor (Loki chart v6 구조)
+8. 모든 CPU/Memory 리소스 값을 문자열로 변경 (Kubernetes 표준)
 
 ## 변경 목적
 Loki v3 업그레이드를 위한 ArgoCD Application 설정 추가. ops 클러스터에 Loki 3.2.0을 distributed mode로 배포하며, 멀티테넌시와 S3 백엔드를 활용한 중앙화된 로그 시스템 구축.
