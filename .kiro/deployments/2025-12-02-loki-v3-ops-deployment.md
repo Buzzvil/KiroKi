@@ -47,16 +47,41 @@
 
 ## Deployment Status
 
+### Initial Deployment (#4325)
 - Created: 2025-12-02T02:01:17Z
-- Status: created
-- GitHub Deployment: https://github.com/Buzzvil/buzz-k8s-resources/commit/008275e04fe0c4116dc2a0191556821faa833211
+- Status: success
+- Commit: 008275e04fe0c4116dc2a0191556821faa833211
+
+### Configuration Fixes
+
+#### Issue 1: Missing maxUnavailable for PodDisruptionBudget
+- Deployment #4326: Added queryFrontend.maxUnavailable
+- Commit: 4d9f1674e766ccaf4a69e4cbccd95d4507c7d418
+
+#### Issue 2: Missing maxUnavailable for all multi-replica components
+- Deployment #4327: Added maxUnavailable to querier, queryScheduler, distributor, indexGateway, gateway, ingester
+- Commit: 9c54f5087a77dd1b9d835583af9ffde7ccfadec0
+
+#### Issue 3: SimpleScalable components conflict with Distributed mode
+- Deployment #4328: Disabled backend, read, write, singleBinary components
+- Commit: 5b62af84e766ccaf4a69e4cbccd95d4507c7d418
+- Status: success
+- ArgoCD Status: OutOfSync (ready to sync)
+
+## Current Status
+
+- **Gitploy**: All deployments successful
+- **ArgoCD**: Manifest generation successful, OutOfSync (awaiting sync)
+- **Resources**: 52 resources ready to be created
+- **Health**: Missing (resources not yet deployed)
 
 ## Next Steps
 
-1. Monitor deployment status via Gitploy
-2. Check ArgoCD sync status
-3. Verify pod status: `kubectl get pods -n loki-v3`
-4. Check Loki health: `kubectl port-forward -n loki-v3 svc/loki-v3-gateway 3100:80`
-5. Test multi-tenancy with different X-Scope-OrgID headers
-6. Verify S3 storage
-7. Check ServiceMonitor and Prometheus scraping
+1. ✅ Gitploy deployment - COMPLETED
+2. ✅ ArgoCD manifest validation - COMPLETED
+3. ⏳ ArgoCD sync - PENDING (manual sync required)
+4. ⏳ Verify pod status: `kubectl get pods -n loki-v3`
+5. ⏳ Check Loki health: `kubectl port-forward -n loki-v3 svc/loki-v3-gateway 3100:80`
+6. ⏳ Test multi-tenancy with different X-Scope-OrgID headers
+7. ⏳ Verify S3 storage
+8. ⏳ Check ServiceMonitor and Prometheus scraping
