@@ -4,7 +4,8 @@
 - PR URL: https://github.com/Buzzvil/terraform-resource/pull/3725
 - Base Branch: master
 - Created: 2025-12-02
-- Status: open
+- Status: merged
+- Applied: 2025-12-02 (Atlantis)
 
 ## 변경 목적
 Loki v3 Pod들이 IAM Role을 assume하지 못하는 문제 해결. Trust Policy의 ServiceAccount 이름 패턴이 실제 ServiceAccount 이름과 일치하지 않음.
@@ -40,29 +41,35 @@ values = ["system:serviceaccount:loki-v3:loki*"]
 - 모든 Loki 컴포넌트가 정상 작동
 - Loki v3가 완전히 작동 가능한 상태로 전환
 
-## 적용 방법
+## 적용 결과
 
-### 1. PR 리뷰 및 승인
-- 변경 사항 검토
-- 승인
+### Atlantis Plan
+- Command: `atlantis plan`
+- Result: **Plan: 0 to add, 3 to change, 0 to destroy**
+- Changes:
+  - aws_iam_role.loki_v3_s3_role["ops"] - trust policy 업데이트
+  - aws_iam_role.loki_v3_s3_role["dev"] - trust policy 업데이트
+  - aws_iam_role.loki_v3_s3_role["prod"] - trust policy 업데이트
 
-### 2. Atlantis Plan
-PR 코멘트에 다음 명령 입력:
+### Atlantis Apply
+- Command: `atlantis apply`
+- Result: ✅ **Apply complete!**
+- Applied: 2025-12-02
+- Resources modified: 3 IAM Roles
+
+### 변경 내용
 ```
-atlantis plan
+~ aws_iam_role.loki_v3_s3_role["ops"]
+  ~ assume_role_policy: "loki-v3*" → "loki*"
+
+~ aws_iam_role.loki_v3_s3_role["dev"]
+  ~ assume_role_policy: "loki-v3*" → "loki*"
+
+~ aws_iam_role.loki_v3_s3_role["prod"]
+  ~ assume_role_policy: "loki-v3*" → "loki*"
 ```
 
-### 3. Plan 확인
-- IAM Role trust policy 변경 확인
-- 다른 리소스에 영향 없음 확인
-
-### 4. Atlantis Apply
-PR 코멘트에 다음 명령 입력:
-```
-atlantis apply
-```
-
-### 5. 적용 확인
+### 검증
 ```bash
 # IAM Role trust policy 확인
 aws iam get-role --role-name eks-loki-v3-s3-role-ops \
