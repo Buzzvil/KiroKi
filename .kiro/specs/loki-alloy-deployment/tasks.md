@@ -27,7 +27,7 @@
   - S3 백엔드 설정 검증
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-- [ ] 3. Gitploy로 Loki를 ops 클러스터에 배포
+- [x] 3. Gitploy로 Loki를 ops 클러스터에 배포
   - Gitploy를 통해 ops 클러스터로 배포 트리거
   - kubectl로 Loki Pod 상태 확인
   - Loki 서비스 엔드포인트 접근성 확인
