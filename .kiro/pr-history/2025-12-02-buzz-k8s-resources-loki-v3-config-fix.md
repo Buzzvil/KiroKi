@@ -159,3 +159,10 @@ index d858f133..2efba109 100644
 - 변경: use_thanos_objstore 제거
 - 결과: 대부분 성공, IAM 권한 문제로 일부 실패
 - Gitploy URL: https://gitploy.buzzvil.dev/repos/Buzzvil/buzz-k8s-resources/deployments/4332
+
+### Deployment #4333 (성공)
+- Commit: 7fd33dcbcf47ffbaddba958ad4ea99c1dd141417
+- 변경: zone-aware replication 비활성화
+- 이유: HPA가 zone별 StatefulSet을 지원하지 않음
+- 결과: ✅ 성공 - 단일 StatefulSet 생성, HPA 정상 작동
+- Gitploy URL: https://gitploy.buzzvil.dev/repos/Buzzvil/buzz-k8s-resources/deployments/4333
