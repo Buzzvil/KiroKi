@@ -120,14 +120,15 @@ argocd cluster list
 
 ## Buzzvil 환경
 
-### ops 클러스터
-- ArgoCD Server: https://argocd-ops.buzzvil.dev (추정)
+### ArgoCD Server
+- URL: https://argo-cd.buzzvil.dev
+- 모든 클러스터 관리 (ops, dev, prod, honeyscreen)
 - 애플리케이션: loki-v3, atlantis, gitploy 등
 
 ### 일반적인 워크플로우
 ```bash
 # 1. 로그인
-argocd login argocd-ops.buzzvil.dev --sso
+argocd login argo-cd.buzzvil.dev --sso
 
 # 2. 애플리케이션 상태 확인
 argocd app get loki-v3 --refresh
