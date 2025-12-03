@@ -1,12 +1,12 @@
 # Implementation Plan
 
-- [ ] 1. Terraform으로 S3 버킷 및 IAM Role 프로비저닝
+- [x] 1. Terraform으로 S3 버킷 및 IAM Role 프로비저닝
   - terraform-resources 리포지토리에 Loki용 S3 버킷 리소스 정의
   - IAM Role 및 정책 생성 (S3 읽기/쓰기 권한)
   - Output으로 버킷 이름과 Role ARN 출력
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-- [ ] 1.1 Terraform 설정 검증 테스트 작성
+- [x] 1.1 Terraform 설정 검증 테스트 작성
   - S3 버킷 생성 확인
   - IAM Role 및 정책 생성 확인
   - Output 값 검증
@@ -14,24 +14,35 @@
   - **Validates: Requirements 1.3**
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-- [ ] 2. buzz-k8s-resources에 Loki Helm 차트 설정
+- [x] 2. buzz-k8s-resources에 Loki Helm 차트 설정
   - Loki Helm 차트 디렉토리 구조 생성
   - values.yaml 작성 (멀티테넌시 활성화, S3 백엔드 설정)
   - 테넌트별 로그 격리 정책 정의 (ops, dev, prod)
   - ServiceAccount에 IAM Role ARN 어노테이션 추가
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-- [ ] 2.1 Helm 차트 설정 검증 테스트 작성
+- [x] 2.1 Helm 차트 설정 검증 테스트 작성
   - Chart.yaml 및 values.yaml 파일 존재 확인
   - 멀티테넌시 설정 (auth_enabled: true) 확인
   - S3 백엔드 설정 검증
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-- [ ] 3. Gitploy로 Loki를 ops 클러스터에 배포
-  - Gitploy를 통해 ops 클러스터로 배포 트리거
-  - kubectl로 Loki Pod 상태 확인
-  - Loki 서비스 엔드포인트 접근성 확인
-  - Health check 엔드포인트 검증
+- [~] 3. Gitploy로 Loki를 ops 클러스터에 배포 (Partial)
+  - [x] Gitploy를 통해 ops 클러스터로 배포 트리거 (Deployment #4325 성공)
+  - [ ] 배포 상태 확인
+    - [ ] Gitploy 배포 상태 조회 (waiting/queued/in_progress/success/failure)
+    - [ ] GitHub Actions 워크플로우 실행 확인
+    - [ ] ArgoCD 동기화 상태 확인 (Synced/OutOfSync/Unknown)
+    - [ ] Kubernetes 리소스 상태 확인
+      - [ ] loki-v3 namespace 존재 확인
+      - [ ] Pod 상태 확인 (Running/Pending/Error)
+      - [ ] 각 컴포넌트별 replica 수 확인
+    - [ ] 서비스 헬스 체크
+      - [ ] Gateway 서비스 접근 가능 여부
+      - [ ] Loki API 응답 확인 (/ready, /metrics)
+  - [ ] kubectl로 Loki Pod 상태 확인 (클러스터 접근 필요)
+  - [ ] Loki 서비스 엔드포인트 접근성 확인 (클러스터 접근 필요)
+  - [ ] Health check 엔드포인트 검증 (클러스터 접근 필요)
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
 
 - [ ] 3.1 Loki 배포 검증 테스트 작성
