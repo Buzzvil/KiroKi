@@ -51,18 +51,26 @@
   - Health check 200 OK 응답 확인
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
 
-- [ ] 4. buzz-k8s-resources에 Alloy Helm 차트 설정
-  - Alloy Helm 차트 디렉토리 구조 생성
-  - values.yaml 작성 (Loki 엔드포인트 설정)
+- [x] 4. buzz-k8s-resources에 Alloy Helm 차트 설정
+  - ArgoCD Application 매니페스트 작성 (alloy-ops.yaml)
+  - Helm 차트: grafana/alloy v1.4.0 (App Version: v1.11.3)
+  - Loki 엔드포인트 설정 (http://loki-v3-distributor.loki-v3.svc.cluster.local:3100)
   - 로그 수집 규칙 정의 (discovery.kubernetes, loki.source.kubernetes)
-  - 환경별 values 파일 생성 (values-ops.yaml, values-dev.yaml, values-prod.yaml)
-  - 각 환경의 tenant_id 설정 (ops, dev, prod)
+  - Node 필터링 추가 (각 Pod가 자신의 노드 로그만 수집)
+  - 레이블 추출 규칙 정의 (app, component, instance, node_name, namespace, pod, container)
+  - Tenant ID 설정 (ops)
+  - DaemonSet 컨트롤러 타입 설정
+  - 리소스 설정 (CPU: 250m, Memory: 300Mi/700Mi)
+  - 모니터링 설정 (Prometheus ServiceMonitor, Datadog OpenMetrics)
+  - PR: https://github.com/Buzzvil/buzz-k8s-resources/pull/1452
   - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
-- [ ] 4.1 Alloy Helm 차트 설정 검증 테스트 작성
-  - Chart.yaml 및 values.yaml 파일 존재 확인
+- [x] 4.1 Alloy Helm 차트 설정 검증 테스트 작성
+  - ArgoCD Application 매니페스트 검증 스크립트 작성
+  - Helm 차트 버전 및 설정 확인
   - Loki 엔드포인트 설정 확인
-  - 환경별 values 파일 존재 및 tenant_id 확인
+  - Tenant ID 설정 확인
+  - 테스트 스크립트: tests/loki-v3-helm-validation.sh
   - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
 - [ ] 5. Gitploy로 Alloy를 ops 클러스터에 배포
