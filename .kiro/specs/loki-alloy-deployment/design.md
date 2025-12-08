@@ -290,19 +290,9 @@ alloy:
         }
       }
       
-      // 로그 필터링 및 처리
-      loki.process "filter" {
+      // 로그 처리 (레이블 추출만 수행, 필터링 없음)
+      loki.process "labels" {
         forward_to = [loki.write.default.receiver]
-        
-        // 불필요한 로그 제거
-        stage.drop {
-          expression = ".*healthcheck.*"
-        }
-        
-        stage.drop {
-          expression = ".*debug.*"
-          drop_counter_reason = "debug_logs"
-        }
         
         // 레이블 추출
         stage.labels {
@@ -314,10 +304,10 @@ alloy:
         }
       }
       
-      // Kubernetes Pod 로그 수집
+      // Kubernetes Pod 로그 수집 (모든 로그 수집)
       loki.source.kubernetes "pods" {
         targets    = discovery.kubernetes.pods.targets
-        forward_to = [loki.process.filter.receiver]
+        forward_to = [loki.process.labels.receiver]
       }
       
       // Kubernetes 서비스 디스커버리
@@ -892,8 +882,7 @@ lifecycle_rules:
       days: 365  # 1년 후 삭제
 ```
 
-**로그 필터링 전략**:
-- healthcheck 로그 제거
-- debug 레벨 로그 제거 (프로덕션)
-- 중복 로그 제거
-- 예상 비용 절감: 30-40%
+**로그 수집 전략**:
+- 모든 로그를 필터링 없이 수집
+- 완전한 로그 가시성 확보
+- 필요 시 Loki 쿼리 단계에서 필터링 가능
