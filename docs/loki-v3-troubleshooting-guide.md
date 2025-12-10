@@ -289,10 +289,194 @@ kubectl --context buzzvil-eks-ops -n loki-v3 get pods
 
 ---
 
+### 4. trafficDistribution 설정 미적용 (2025-12-10)
+
+#### 문제 증상
+```bash
+kubectl --context buzzvil-eks-ops -n loki-v3 get service loki-v3-distributor -o yaml | grep trafficDistribution
+# 출력 없음 - trafficDistribution 설정이 적용되지 않음
+```
+
+#### 원인 분석
+- ArgoCD 동기화가 완료되었지만 서비스에 `trafficDistribution: PreferClose` 설정이 반영되지 않음
+- Kubernetes 1.30+ 버전에서 지원하는 기능이지만 클러스터 버전 확인 필요
+
+#### 해결 방법
+
+**1. 클러스터 버전 확인**
+```bash
+kubectl --context buzzvil-eks-ops version --short
+```
+
+**2. 서비스 템플릿 수정 확인**
+모든 서비스 템플릿에 다음 패턴이 추가되었는지 확인:
+```yaml
+{{- with .Values.컴포넌트명.trafficDistribution | default .Values.loki.service.trafficDistribution }}
+  trafficDistribution: {{ . }}
+{{- end }}
+```
+
+**3. Values 설정 확인**
+```yaml
+loki:
+  service:
+    trafficDistribution: PreferClose
+```
+
+#### 검증
+```bash
+# ArgoCD 동기화 상태 확인
+kubectl --context buzzvil-eks-ops -n argo-cd get application loki-v3-ops -o jsonpath='{.status.sync.status}'
+
+# 서비스에 trafficDistribution 적용 확인
+kubectl --context buzzvil-eks-ops -n loki-v3 get services -o yaml | grep -A 1 "trafficDistribution"
+```
+
+---
+
+## VPC Flow Logs 활성화 및 Cross-AZ 트래픽 분석
+
+### VPC Flow Logs 설정
+
+#### 1. VPC Flow Logs 활성화
+```bash
+# buzzvil-eks-ops 클러스터의 VPC ID 확인
+VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=buzzvil-eks-ops-vpc" --query 'Vpcs[0].VpcId' --output text --profile sso-adfit-devops)
+
+# S3 버킷 생성 (이미 있다면 생략)
+aws s3 mb s3://buzzvil-vpc-flow-logs-ops --profile sso-adfit-devops
+
+# VPC Flow Logs 활성화
+aws ec2 create-flow-logs \
+  --resource-type VPC \
+  --resource-ids $VPC_ID \
+  --traffic-type ALL \
+  --log-destination-type s3 \
+  --log-destination "arn:aws:s3:::buzzvil-vpc-flow-logs-ops/vpc-flow-logs/" \
+  --log-format '${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${windowstart} ${windowend} ${action} ${flowlogstatus}' \
+  --profile sso-adfit-devops
+```
+
+#### 2. Flow Logs 데이터 확인
+```bash
+# 5-10분 후 S3에서 데이터 확인
+aws s3 ls s3://buzzvil-vpc-flow-logs-ops/vpc-flow-logs/ --recursive --profile sso-adfit-devops
+```
+
+### Cross-AZ 트래픽 분석
+
+#### 1. Loki v3 포트 필터링
+```python
+# Python 스크립트 예시
+import pandas as pd
+import boto3
+
+# Loki v3 전용 포트 목록
+loki_v3_ports = [4080, 4090, 4091] + list(range(4101, 4108)) + list(range(4201, 4208))
+
+# VPC Flow Logs 데이터 로드
+df = pd.read_csv('s3://buzzvil-vpc-flow-logs-ops/vpc-flow-logs/...')
+
+# Loki v3 트래픽만 필터링
+loki_v3_traffic = df[df['dstport'].isin(loki_v3_ports)]
+
+# Cross-AZ 트래픽 분석
+# Zone A: 10.0.128.0/22 (10.0.128.0 - 10.0.131.255)
+# Zone C: 10.0.132.0/22 (10.0.132.0 - 10.0.135.255)
+
+def get_zone(ip):
+    ip_parts = ip.split('.')
+    if ip_parts[0] == '10' and ip_parts[1] == '0':
+        third_octet = int(ip_parts[2])
+        if 128 <= third_octet <= 131:
+            return 'Zone-A'
+        elif 132 <= third_octet <= 135:
+            return 'Zone-C'
+    return 'Unknown'
+
+loki_v3_traffic['src_zone'] = loki_v3_traffic['srcaddr'].apply(get_zone)
+loki_v3_traffic['dst_zone'] = loki_v3_traffic['dstaddr'].apply(get_zone)
+
+# Cross-AZ 트래픽 계산
+cross_az_traffic = loki_v3_traffic[loki_v3_traffic['src_zone'] != loki_v3_traffic['dst_zone']]
+total_bytes = loki_v3_traffic['bytes'].sum()
+cross_az_bytes = cross_az_traffic['bytes'].sum()
+
+print(f"Total Loki v3 traffic: {total_bytes / 1024**3:.2f} GB")
+print(f"Cross-AZ traffic: {cross_az_bytes / 1024**3:.2f} GB")
+print(f"Cross-AZ percentage: {(cross_az_bytes / total_bytes) * 100:.2f}%")
+```
+
+#### 2. trafficDistribution 효과 측정
+```bash
+# trafficDistribution 적용 전후 비교
+# 1. 적용 전 데이터 수집 (2025-12-09 이전)
+# 2. 적용 후 데이터 수집 (2025-12-10 이후)
+# 3. Cross-AZ 트래픽 비율 비교
+
+# kubectl debug를 이용한 실시간 모니터링
+kubectl --context buzzvil-eks-ops -n loki-v3 debug -it loki-v3-distributor-0 \
+  --image=nicolaka/netshoot --target=distributor
+
+# 디버그 컨테이너 내부에서 실행
+timeout 300 tcpdump -i any -n port 4101 and 'tcp[tcpflags] & (tcp-syn) != 0' 2>/dev/null | \
+  awk '{print $3}' | cut -d'.' -f1-4 | tee /tmp/source_ips.log
+
+# Zone별 트래픽 분석
+echo "Zone A connections:"
+grep -E '^10\.0\.(12[89]|13[01])\.' /tmp/source_ips.log | wc -l
+echo "Zone C connections:"
+grep -E '^10\.0\.(13[2-5])\.' /tmp/source_ips.log | wc -l
+```
+
+### 비용 분석
+
+#### Cross-AZ 데이터 전송 비용 계산
+```python
+# AWS Cross-AZ 데이터 전송 비용: $0.01 per GB
+cross_az_cost_per_gb = 0.01
+
+# 일일 Cross-AZ 트래픽 (GB)
+daily_cross_az_gb = cross_az_bytes / 1024**3
+
+# 월간 예상 비용
+monthly_cost = daily_cross_az_gb * 30 * cross_az_cost_per_gb
+
+print(f"Daily Cross-AZ traffic: {daily_cross_az_gb:.2f} GB")
+print(f"Monthly Cross-AZ cost: ${monthly_cost:.2f}")
+
+# trafficDistribution 적용 후 절약 효과
+# 예상 절약률: 70-80% (same-zone routing 효과)
+estimated_savings = monthly_cost * 0.75
+print(f"Estimated monthly savings: ${estimated_savings:.2f}")
+```
+
+---
+
 ## 작업 이력
 
-- **날짜:** 2025-12-09
+### 2025-12-09: Custom Ports Configuration
 - **작업자:** DevOps Team
 - **브랜치:** feat/loki-v3-custom-ports-for-cross-az-analysis
 - **배포 환경:** buzzvil-eks-ops
-- **Gitploy Deployments:** #4388, #4390, #4391
+- **Gitploy Deployments:** #4369-#4374 (6회 순차 배포)
+- **목적:** VPC Flow Logs에서 Loki v3 트래픽 구분을 위한 포트 변경
+
+### 2025-12-10: Zone-Aware Traffic Routing
+- **작업자:** DevOps Team
+- **브랜치:** feat/loki-v3-custom-ports-for-cross-az-analysis (계속)
+- **배포 환경:** buzzvil-eks-ops
+- **Gitploy Deployment:** #4392
+- **목적:** trafficDistribution: PreferClose 설정으로 Cross-AZ 트래픽 감소
+
+### 주요 변경사항
+1. **포트 구성 (2025-12-09)**
+   - HTTP: 3100 → 4100-4107 (컴포넌트별)
+   - gRPC: 9095 → 4201-4207 (컴포넌트별)
+   - Gateway: 8080 → 4080
+   - Cache: 11211 → 4090, 4091
+
+2. **Zone-Aware 라우팅 (2025-12-10)**
+   - 모든 서비스에 `trafficDistribution: PreferClose` 추가
+   - 공식 Grafana Loki 차트 패턴 적용 (6.31.0+)
+   - Same-zone 엔드포인트 우선 라우팅
