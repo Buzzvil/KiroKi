@@ -133,14 +133,38 @@ kubectl --context buzzvil-eks-ops -n loki-v3 get service loki-v3-distributor -o 
 ```
 
 #### Cross-AZ 트래픽 모니터링
-```bash
-# kubectl debug를 이용한 트래픽 패턴 모니터링
-kubectl --context buzzvil-eks-ops -n loki-v3 debug -it loki-v3-distributor-0 \
-  --image=nicolaka/netshoot --target=distributor
 
-# 디버그 컨테이너 내부에서 Source IP 모니터링
-timeout 60 tcpdump -i any -n port 4101 2>/dev/null | \
-  awk '{print $3}' | cut -d'.' -f1-4 | sort | uniq -c | sort -rn
+**⚠️ 주의**: Loki 컨테이너는 non-root로 실행되어 tcpdump 사용 불가
+
+**대안 1: Service Endpoints 분석**
+```bash
+# Service Endpoints의 Zone 분포 확인
+kubectl --context buzzvil-eks-ops -n loki-v3 get endpoints loki-v3-distributor -o yaml | \
+  grep -E "(ip:|nodeName)" | \
+  while read line; do
+    if echo "$line" | grep -q "ip:"; then
+      ip=$(echo "$line" | awk '{print $2}')
+      echo -n "IP: $ip -> "
+    elif echo "$line" | grep -q "nodeName"; then
+      node=$(echo "$line" | awk '{print $2}')
+      zone=$(kubectl --context buzzvil-eks-ops get node "$node" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')
+      echo "Zone: $zone"
+    fi
+  done
+```
+
+**대안 2: Pod 분포 분석**
+```bash
+# Pod들의 Zone 분포 확인
+kubectl --context buzzvil-eks-ops -n loki-v3 get pods -l app.kubernetes.io/component=distributor -o wide | \
+  while read line; do
+    if echo "$line" | grep -q "loki-v3-distributor"; then
+      pod_name=$(echo "$line" | awk '{print $1}')
+      node_name=$(echo "$line" | awk '{print $7}')
+      zone=$(kubectl --context buzzvil-eks-ops get node "$node_name" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')
+      echo "$pod_name -> Zone: $zone"
+    fi
+  done
 ```
 
 ## 포트 구성

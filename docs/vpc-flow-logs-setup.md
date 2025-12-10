@@ -294,19 +294,61 @@ if __name__ == "__main__":
 
 ## 실시간 모니터링
 
-### kubectl debug를 이용한 트래픽 모니터링
+### ⚠️ kubectl debug 제한사항
+
+Loki 컨테이너는 non-root 사용자로 실행되므로 tcpdump 같은 네트워크 도구 사용이 제한됩니다. 대신 다음 방법들을 사용하세요:
+
+### 1. 별도 네트워크 모니터링 Pod 배포
 
 ```bash
-# Loki v3 distributor Pod에 debug 컨테이너 연결
-kubectl --context buzzvil-eks-ops -n loki-v3 debug -it loki-v3-distributor-0 \
-  --image=nicolaka/netshoot --target=distributor
+# 네트워크 모니터링용 privileged Pod 생성
+cat > /tmp/network-monitor.yaml << 'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: network-monitor
+  namespace: loki-v3
+spec:
+  hostNetwork: true
+  containers:
+  - name: netshoot
+    image: nicolaka/netshoot
+    command: ["/bin/bash"]
+    args: ["-c", "sleep 3600"]
+    securityContext:
+      privileged: true
+      capabilities:
+        add: ["NET_ADMIN", "NET_RAW"]
+    volumeMounts:
+    - name: proc
+      mountPath: /host/proc
+      readOnly: true
+    - name: sys
+      mountPath: /host/sys
+      readOnly: true
+  volumes:
+  - name: proc
+    hostPath:
+      path: /proc
+  - name: sys
+    hostPath:
+      path: /sys
+  tolerations:
+  - operator: Exists
+  nodeSelector:
+    topology.kubernetes.io/zone: ap-northeast-1a  # 특정 Zone에서 모니터링
+EOF
 
-# 디버그 컨테이너 내부에서 실행
+kubectl --context buzzvil-eks-ops apply -f /tmp/network-monitor.yaml
+
+# Pod 내부에서 트래픽 모니터링
+kubectl --context buzzvil-eks-ops -n loki-v3 exec -it network-monitor -- bash
+
+# 컨테이너 내부에서 실행
 timeout 300 tcpdump -i any -n port 4101 and 'tcp[tcpflags] & (tcp-syn) != 0' 2>/dev/null | \
   awk '{print $3}' | cut -d'.' -f1-4 | tee /tmp/source_ips.log
 
-# Zone별 연결 수 분석 (buzzvil-eks-ops)
-echo "=== Zone Analysis ==="
+# Zone별 연결 수 분석
 zone_a_count=$(grep -E '^10\.0\.(12[89]|13[01])\.' /tmp/source_ips.log | wc -l)
 zone_c_count=$(grep -E '^10\.0\.(13[2-5])\.' /tmp/source_ips.log | wc -l)
 total_count=$(wc -l < /tmp/source_ips.log)
@@ -314,12 +356,80 @@ total_count=$(wc -l < /tmp/source_ips.log)
 echo "Zone A (ap-northeast-1a): $zone_a_count connections ($(( zone_a_count * 100 / total_count ))%)"
 echo "Zone C (ap-northeast-1c): $zone_c_count connections ($(( zone_c_count * 100 / total_count ))%)"
 
-# trafficDistribution 효과 확인
-if [ $zone_a_count -gt $zone_c_count ]; then
-    echo "✅ Same-zone routing working (more Zone A traffic)"
-else
-    echo "⚠️  Cross-zone traffic detected"
-fi
+# 정리
+kubectl --context buzzvil-eks-ops -n loki-v3 delete pod network-monitor
+```
+
+### 2. Service Endpoints 분석
+
+```bash
+# Service Endpoints의 Zone 분포 확인
+kubectl --context buzzvil-eks-ops -n loki-v3 get endpoints loki-v3-distributor -o yaml | \
+  grep -E "(ip:|nodeName)" | \
+  while read line; do
+    if echo "$line" | grep -q "ip:"; then
+      ip=$(echo "$line" | awk '{print $2}')
+      echo -n "IP: $ip -> "
+    elif echo "$line" | grep -q "nodeName"; then
+      node=$(echo "$line" | awk '{print $2}')
+      zone=$(kubectl --context buzzvil-eks-ops get node "$node" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')
+      echo "Zone: $zone"
+    fi
+  done
+```
+
+### 3. Pod 분포 및 연결 패턴 분석
+
+```bash
+# Distributor Pod들의 Zone 분포 확인
+echo "=== Distributor Pod Distribution ==="
+kubectl --context buzzvil-eks-ops -n loki-v3 get pods -l app.kubernetes.io/component=distributor -o wide | \
+  while read line; do
+    if echo "$line" | grep -q "loki-v3-distributor"; then
+      pod_name=$(echo "$line" | awk '{print $1}')
+      node_name=$(echo "$line" | awk '{print $7}')
+      zone=$(kubectl --context buzzvil-eks-ops get node "$node_name" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')
+      echo "$pod_name -> Node: $node_name -> Zone: $zone"
+    fi
+  done
+
+# Ingester Pod들의 Zone 분포 확인
+echo "=== Ingester Pod Distribution ==="
+kubectl --context buzzvil-eks-ops -n loki-v3 get pods -l app.kubernetes.io/component=ingester -o wide | \
+  while read line; do
+    if echo "$line" | grep -q "loki-v3-ingester"; then
+      pod_name=$(echo "$line" | awk '{print $1}')
+      node_name=$(echo "$line" | awk '{print $7}')
+      zone=$(kubectl --context buzzvil-eks-ops get node "$node_name" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')
+      echo "$pod_name -> Node: $node_name -> Zone: $zone"
+    fi
+  done
+```
+
+### 4. Loki 메트릭을 통한 연결 분석
+
+```bash
+# Loki 메트릭에서 연결 정보 확인 (port-forward 필요)
+kubectl --context buzzvil-eks-ops -n loki-v3 port-forward svc/loki-v3-distributor 4101:4101 &
+PORT_FORWARD_PID=$!
+
+# 메트릭 조회
+curl -s http://localhost:4101/metrics | grep -E "(loki_distributor|http_requests)" | head -20
+
+# port-forward 종료
+kill $PORT_FORWARD_PID
+```
+
+### 5. 로그 기반 연결 분석
+
+```bash
+# Distributor 로그에서 연결 정보 확인
+kubectl --context buzzvil-eks-ops -n loki-v3 logs -l app.kubernetes.io/component=distributor --tail=100 | \
+  grep -E "(connection|client|remote)" | head -10
+
+# Ingester 로그에서 연결 정보 확인
+kubectl --context buzzvil-eks-ops -n loki-v3 logs -l app.kubernetes.io/component=ingester --tail=100 | \
+  grep -E "(connection|client|remote)" | head -10
 ```
 
 ## 비용 분석
